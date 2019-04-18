@@ -119,11 +119,11 @@ public interface Watcher {
          */
         @InterfaceAudience.Public
         public enum EventType {
-            None (-1),
-            NodeCreated (1),
-            NodeDeleted (2),
-            NodeDataChanged (3),
-            NodeChildrenChanged (4);
+            None (-1),//客户端连接状态发生变化的时候，会受到none事件
+            NodeCreated (1),//创建节点的事件
+            NodeDeleted (2),//删除节点的事件
+            NodeDataChanged (3),//节点数据发生变更
+            NodeChildrenChanged (4);//子节点被创建、被删除、会发生事件触发
 
             private final int intValue;     // Integer representation of value
                                             // for sending over wire

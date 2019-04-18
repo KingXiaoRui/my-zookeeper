@@ -78,6 +78,7 @@ public class QuorumPeerMain {
     public static void main(String[] args) {
         QuorumPeerMain main = new QuorumPeerMain();
         try {
+            //入口方法，初始化zookeeper并启动
             main.initializeAndRun(args);
         } catch (IllegalArgumentException e) {
             LOG.error("Invalid arguments, exiting abnormally", e);
@@ -110,6 +111,7 @@ public class QuorumPeerMain {
                 .getSnapRetainCount(), config.getPurgeInterval());
         purgeMgr.start();
 
+        //判断是standalone模式还是集群模式
         if (args.length == 1 && config.servers.size() > 0) {
             runFromConfig(config);
         } else {
@@ -129,12 +131,15 @@ public class QuorumPeerMain {
   
       LOG.info("Starting quorum peer");
       try {
+          //为客户端提供读写的server，也就是2181这个端口的访问功能
           ServerCnxnFactory cnxnFactory = ServerCnxnFactory.createFactory();
           cnxnFactory.configure(config.getClientPortAddress(),
                                 config.getMaxClientCnxns());
 
+          //ZK的逻辑主线程，负责选举、投票逻辑
           quorumPeer = getQuorumPeer();
 
+          //设置各种参数
           quorumPeer.setQuorumPeers(config.getServers());
           quorumPeer.setTxnFactory(new FileTxnSnapLog(
                   new File(config.getDataLogDir()),
@@ -167,6 +172,7 @@ public class QuorumPeerMain {
           quorumPeer.setQuorumCnxnThreadsSize(config.quorumCnxnThreadsSize);
           quorumPeer.initialize();
 
+          //启动主线程，QuorumPeer重写了Thread().start方法
           quorumPeer.start();
           quorumPeer.join();
       } catch (InterruptedException e) {

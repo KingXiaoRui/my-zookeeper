@@ -633,8 +633,11 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
     
     @Override
     public synchronized void start() {
+
+        //恢复DB
         loadDataBase();
         cnxnFactory.start();        
+        //Leader选举初始化
         startLeaderElection();
         super.start();
     }
@@ -643,12 +646,15 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
         File updating = new File(getTxnFactory().getSnapDir(),
                                  UPDATING_EPOCH_FILENAME);
 		try {
+		    //从本地文件恢复DB
             zkDb.loadDataBase();
 
             // load the epochs
+            //从最新的zxid恢复epoch变量，zxid64位，前32位是epoch的值，低32位是zxid
             long lastProcessedZxid = zkDb.getDataTree().lastProcessedZxid;
     		long epochOfZxid = ZxidUtils.getEpochFromZxid(lastProcessedZxid);
             try {
+                //从文件中读取当前的epoch
             	currentEpoch = readLongFromFile(CURRENT_EPOCH_FILENAME);
                 if (epochOfZxid > currentEpoch && updating.exists()) {
                     LOG.info("{} found. The server was terminated after " +
@@ -703,6 +709,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
     }
     synchronized public void startLeaderElection() {
     	try {
+    	    //如果当前节点的状态是LOOKING，则投票给自己
     		currentVote = new Vote(myid, getLastLoggedZxid(), getCurrentEpoch());
     	} catch(IOException e) {
     		RuntimeException re = new RuntimeException(e.getMessage());
@@ -727,6 +734,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
                 throw new RuntimeException(e);
             }
         }
+        //根据配置获取选举方式
         this.electionAlg = createElectionAlgorithm(electionType);
     }
     
@@ -822,10 +830,14 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             le = new AuthFastLeaderElection(this, true);
             break;
         case 3:
+            //Leader选举IO负责类
+            //显然前三种已经被zookeeper废弃了。
             qcm = createCnxnManager();
             QuorumCnxManager.Listener listener = qcm.listener;
             if(listener != null){
+                //启动已绑定端口的选举线程，等待集群中其他机器连接
                 listener.start();
+                //基于TCP的选举算法
                 le = new FastLeaderElection(this, qcm);
             } else {
                 LOG.error("Null listener when initializing cnx manager");
@@ -874,6 +886,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
 
         LOG.debug("Starting quorum peer");
         try {
+            //此处通过JMX来监控一些属性
             jmxQuorumBean = new QuorumBean(this);
             MBeanRegistry.getInstance().register(jmxQuorumBean, null);
             for(QuorumServer s: getView().values()){
@@ -903,9 +916,12 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
         try {
             /*
              * Main loop
+             * 重点关注该while循环，核心
              */
             while (running) {
+                //判断当前节点的状态
                 switch (getPeerState()) {
+                //如果是LOOKING，则进入选举流程
                 case LOOKING:
                     LOG.info("LOOKING");
 
@@ -955,6 +971,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
                     } else {
                         try {
                             setBCVote(null);
+                            //此处通过策略模式来决定当前用那个选举算法来进行leader选举
                             setCurrentVote(makeLEStrategy().lookForLeader());
                         } catch (Exception e) {
                             LOG.warn("Unexpected exception", e);
@@ -962,6 +979,8 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
                         }
                     }
                     break;
+                //如果收到的选票状态不是LOOKING，比如这台机器刚加入一个已经正在运行的zk集群时
+                //OBSERVING机器不参与选举
                 case OBSERVING:
                     try {
                         LOG.info("OBSERVING");
